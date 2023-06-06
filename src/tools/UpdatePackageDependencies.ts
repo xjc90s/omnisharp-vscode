@@ -12,7 +12,6 @@ import * as Event from "../omnisharp/loggingEvents";
 import NetworkSettings, { NetworkSettingsProvider } from '../NetworkSettings';
 import { getBufferIntegrityHash } from '../packageManager/isValidDownload';
 import { EventType } from '../omnisharp/EventType';
-import findVersions = require('find-versions');
 
 interface PackageJSONFile {
     runtimeDependencies: Package[];
@@ -61,11 +60,11 @@ export async function updatePackageDependencies(): Promise<void> {
                 break;
         }
     });
-    const networkSettingsProvider: NetworkSettingsProvider = () => new NetworkSettings(/*proxy:*/ null, /*stringSSL:*/ true);
+    const networkSettingsProvider: NetworkSettingsProvider = () => new NetworkSettings(/*proxy:*/ '', /*stringSSL:*/ true);
 
     const downloadAndGetHash = async (url: string): Promise<string> => {
         console.log(`Downloading from '${url}'`);
-        const buffer: Buffer = await DownloadFile(url, eventStream, networkSettingsProvider, url, null);
+        const buffer: Buffer = await DownloadFile(url, eventStream, networkSettingsProvider, url);
         return getBufferIntegrityHash(buffer);
     };
 
@@ -176,9 +175,12 @@ export async function updatePackageDependencies(): Promise<void> {
 }
 
 
-function replaceVersion(fileName: string, newVersion: string): string {
-    if (!fileName) {
-        return fileName; //if the value is null or undefined return the same one
+function replaceVersion(fileName: string, newVersion: string): string;
+function replaceVersion(fileName: undefined, newVersion: string): undefined;
+function replaceVersion(fileName: string | undefined, newVersion: string): string | undefined;
+function replaceVersion(fileName: string | undefined, newVersion: string): string | undefined {
+    if (fileName === undefined) {
+        return undefined; // If the file name is undefined, no version to replace
     }
 
     let regex: RegExp = dottedVersionRegExp;
@@ -190,13 +192,17 @@ function replaceVersion(fileName: string, newVersion: string): string {
     dottedVersionRegExp.lastIndex = 0;
 
     if (!regex.test(fileName)) {
-        return fileName; //If the string doesn't contain any version return the same string
+        return fileName; // If the string doesn't contain any version return the same string
     }
 
     return fileName.replace(regex, newValue);
 }
 
-function verifyVersionSubstringCount(value: string, shouldContainVersion = false): void {
+function verifyVersionSubstringCount(value: string | undefined, shouldContainVersion = false): void {
+    if (value === undefined) {
+        return;
+    }
+
     const getMatchCount = (regexp: RegExp, searchString: string): number => {
         regexp.lastIndex = 0;
         let retVal = 0;
@@ -207,24 +213,20 @@ function verifyVersionSubstringCount(value: string, shouldContainVersion = false
         return retVal;
     };
 
-    if (!value) {
-        return;
-    }
+    const dottedMatches = getMatchCount(dottedVersionRegExp, value);
+    const dashedMatches = getMatchCount(dashedVersionRegExp, value);
+    const matchCount = dottedMatches + dashedMatches;
 
-    const dottedMatches: number = getMatchCount(dottedVersionRegExp, value);
-    const dashedMatches: number = getMatchCount(dashedVersionRegExp, value);
-    const matchCount: number = dottedMatches + dashedMatches;
-
-    if (shouldContainVersion && matchCount == 0) {
+    if (shouldContainVersion && matchCount === 0) {
         throw new Error(`Version number not found in '${value}'.`);
     }
+
     if (matchCount > 2) {
         throw new Error(`Ambiguous version pattern found in '${value}'. Multiple version strings found.`);
     }
 }
 
 function getLowercaseFileNameFromUrl(url: string): string {
-
     if (!url.startsWith("https://")) {
         throw new Error(`Unexpected URL '${url}'. URL expected to start with 'https://'.`);
     }
@@ -236,21 +238,22 @@ function getLowercaseFileNameFromUrl(url: string): string {
     let index = url.lastIndexOf("/");
     let fileName = url.substr(index + 1).toLowerCase();
 
-    // With Razor putting two version numbers into their filename we need to split up the name to
-    // correctly identify the version part of the filename.
-    let nameParts = fileName.split('-');
-    let potentialVersionPart = nameParts[nameParts.length - 1];
-    let versions = findVersions(potentialVersionPart, { loose: true });
-    if (!versions || versions.length == 0) {
+    if (fileName.startsWith("omnisharp")) {
+        // Omnisharp versions are always after the last '-'.
+        // e.g. we want omnisharp-win-x86 from omnisharp-win-x86-1.39.3.zip
+        let lastDash = fileName.lastIndexOf('-');
+        fileName = fileName.substr(0, lastDash);
         return fileName;
+    } else if (fileName.startsWith("coreclr-debug")) {
+        // Debugger versions are not contained in the file name.
+        return fileName;
+    } else if (fileName.startsWith("razorlanguageserver")) {
+        // Razor versions are everything after the second to last dash.
+        // e.g. we want razorlanguageserver-win-x64 from razorlanguageserver-win-x64-7.0.0-preview.23067.5.zip
+        let secondToLastDash = fileName.lastIndexOf('-', fileName.lastIndexOf('-') - 1);
+        fileName = fileName.substr(0, secondToLastDash);
+        return fileName;
+    } else {
+        throw new Error(`Unexpected dependency file name '${fileName}'`);
     }
-
-    if (versions.length > 1) {
-        //we expect only one version string to be present in the last part of the url
-        throw new Error(`Ambiguous version pattern found URL '${url}'. Multiple version strings found.`);
-    }
-
-    let versionIndex = fileName.indexOf(versions[0]);
-    //remove the dash before the version number
-    return fileName.substr(0, versionIndex - 1).toLowerCase();
 }

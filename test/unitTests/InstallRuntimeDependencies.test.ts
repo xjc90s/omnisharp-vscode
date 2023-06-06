@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-
 import { installRuntimeDependencies } from "../../src/InstallRuntimeDependencies";
 import IInstallDependencies from "../../src/packageManager/IInstallDependencies";
 import { EventStream } from "../../src/EventStream";
@@ -12,19 +11,20 @@ import * as chai from "chai";
 import TestEventBus from "./testAssets/TestEventBus";
 import { AbsolutePathPackage } from "../../src/packageManager/AbsolutePathPackage";
 import { Package } from "../../src/packageManager/Package";
+import { isNotNull } from "../testUtil";
 
 const expect = chai.expect;
 
 suite(`${installRuntimeDependencies.name}`, () => {
     let packageJSON = {
-        runtimeDependencies: {}
+        runtimeDependencies: [] as Package[]
     };
 
     let extensionPath = "/ExtensionPath";
     let installDependencies: IInstallDependencies;
     let eventStream: EventStream;
     let eventBus: TestEventBus;
-    let platformInfo = new PlatformInformation("platform1", "architecture1");
+    let platformInfo = new PlatformInformation("linux", "architecture1");
     const useFramework = true;
 
     setup(() => {
@@ -36,7 +36,7 @@ suite(`${installRuntimeDependencies.name}`, () => {
     suite("When all the dependencies already exist", () => {
         suiteSetup(() => {
             packageJSON = {
-                runtimeDependencies: {}
+                runtimeDependencies: []
             };
         });
 
@@ -46,8 +46,8 @@ suite(`${installRuntimeDependencies.name}`, () => {
         });
 
         test("Doesn't log anything to the eventStream", async () => {
-            let packageJSON = {
-                runtimeDependencies: {}
+            packageJSON = {
+                runtimeDependencies: []
             };
 
             await installRuntimeDependencies(packageJSON, extensionPath, installDependencies, eventStream, platformInfo, useFramework);
@@ -81,6 +81,7 @@ suite(`${installRuntimeDependencies.name}`, () => {
 
             let installed = await installRuntimeDependencies(packageJSON, extensionPath, installDependencies, eventStream, platformInfo, useFramework);
             expect(installed).to.be.true;
+            isNotNull(inputPackage!);
             expect(inputPackage).to.have.length(1);
             expect(inputPackage[0]).to.be.deep.equal(AbsolutePathPackage.getAbsolutePathPackage(packageToInstall, extensionPath));
         });

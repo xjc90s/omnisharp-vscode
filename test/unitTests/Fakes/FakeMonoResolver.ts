@@ -9,22 +9,22 @@ import { HostExecutableInformation } from "../../../src/constants/HostExecutable
 export const fakeMonoInfo: HostExecutableInformation = {
     version: "someMonoVersion",
     path: "somePath",
-    env: undefined
+    env: { }
 };
 
 export class FakeMonoResolver implements IHostExecutableResolver {
-    public getGlobalMonoCalled: boolean;
+    public getMonoCalled: boolean;
 
     constructor(public willReturnMonoInfo = true) {
-        this.getGlobalMonoCalled = false;
+        this.getMonoCalled = false;
     }
 
     async getHostExecutableInfo(): Promise<HostExecutableInformation> {
-        this.getGlobalMonoCalled = true;
+        this.getMonoCalled = true;
         if (this.willReturnMonoInfo) {
             return Promise.resolve(fakeMonoInfo);
         }
 
-        return Promise.resolve(undefined);
+        return Promise.resolve(undefined!);
     }
 }

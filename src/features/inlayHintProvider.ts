@@ -8,8 +8,8 @@ import AbstractProvider from './abstractProvider';
 import { OmniSharpServer } from '../omnisharp/server';
 import { LanguageMiddlewareFeature } from '../omnisharp/LanguageMiddlewareFeature';
 import CompositeDisposable from '../CompositeDisposable';
-import { InlayHint, InlayHintRequest, InlayHintResolve as InlayHintResolveRequest } from '../omnisharp/protocol';
-import { fromVSCodeRange, toVSCodePosition } from '../omnisharp/typeConversion';
+import { InlayHint, InlayHintRequest, InlayHintResolve as InlayHintResolveRequest, LinePositionSpanTextChange } from '../omnisharp/protocol';
+import { fromVSCodeRange, toVSCodePosition, toVSCodeTextEdit } from '../omnisharp/typeConversion';
 import { isVirtualCSharpDocument } from './virtualDocumentTracker';
 
 export default class CSharpInlayHintProvider extends AbstractProvider implements vscode.InlayHintsProvider {
@@ -30,6 +30,11 @@ export default class CSharpInlayHintProvider extends AbstractProvider implements
     }
 
     async provideInlayHints(document: vscode.TextDocument, range: vscode.Range, token: vscode.CancellationToken): Promise<vscode.InlayHint[]> {
+        // Exclude documents from other schemes, such as those in the diff view.
+        if (document.uri.scheme !== "file") {
+            return [];
+        }
+
         if (isVirtualCSharpDocument(document)) {
             return [];
         }
@@ -45,7 +50,7 @@ export default class CSharpInlayHintProvider extends AbstractProvider implements
             const hints = await serverUtils.getInlayHints(this._server, request, token);
 
             return hints.InlayHints.map((inlayHint): vscode.InlayHint => {
-                const mappedHint = this.toVscodeHint(inlayHint);
+                const mappedHint = this.toVSCodeHint(inlayHint);
                 this._hintsMap.set(mappedHint, inlayHint);
                 return mappedHint;
             });
@@ -55,25 +60,31 @@ export default class CSharpInlayHintProvider extends AbstractProvider implements
     }
 
     async resolveInlayHint?(hint: vscode.InlayHint, token: vscode.CancellationToken): Promise<vscode.InlayHint> {
-        if (!this._hintsMap.has(hint)) {
+        const inlayHint = this._hintsMap.get(hint);
+        if (inlayHint === undefined) {
             return Promise.reject(`Outdated inlay hint was requested to be resolved, aborting.`);
         }
 
-        const request: InlayHintResolveRequest = { Hint: this._hintsMap.get(hint) };
+        const request: InlayHintResolveRequest = { Hint: inlayHint };
 
         try {
             const result = await serverUtils.resolveInlayHints(this._server, request, token);
-            return this.toVscodeHint(result);
+            return this.toVSCodeHint(result);
         } catch (error) {
             return Promise.reject(`Problem invoking 'ResolveInlayHints' on OmniSharpServer: ${error}`);
         }
     }
 
-    private toVscodeHint(inlayHint: InlayHint): vscode.InlayHint {
+    private toVSCodeHint(inlayHint: InlayHint): vscode.InlayHint {
         return {
             label: inlayHint.Label,
             position: toVSCodePosition(inlayHint.Position),
-            tooltip: new vscode.MarkdownString(inlayHint.Tooltip ?? "")
+            tooltip: new vscode.MarkdownString(inlayHint.Tooltip ?? ""),
+            textEdits: toVSCodeTextEdits(inlayHint.TextEdits),
         };
+
+        function toVSCodeTextEdits(textEdits: LinePositionSpanTextChange[] | undefined): vscode.TextEdit[] | undefined {
+            return textEdits?.map(toVSCodeTextEdit) ?? undefined;
+        }
     }
 }

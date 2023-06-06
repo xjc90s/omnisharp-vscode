@@ -9,7 +9,7 @@ import { PackageError } from "../packageManager/PackageError";
 import { EventType } from "../omnisharp/EventType";
 
 export class CsharpLoggerObserver extends BaseLoggerObserver {
-    private dots: number;
+    private dots: number = 0;
 
     public post = (event: Event.BaseEvent) => {
         switch (event.type) {
@@ -67,6 +67,9 @@ export class CsharpLoggerObserver extends BaseLoggerObserver {
                 break;
             case EventType.IntegrityCheckSuccess:
                 this.handleIntegrityCheckSuccess(<Event.IntegrityCheckSuccess>event);
+                break;
+            case EventType.DevCertCreationFailure:
+                this.handleDevCertCreationFailure(<Event.DevCertCreationFailure>event);
                 break;
         }
     }
@@ -145,5 +148,9 @@ export class CsharpLoggerObserver extends BaseLoggerObserver {
 
     private handleDocumentSynchronizationFailure(event: Event.DocumentSynchronizationFailure) {
         this.logger.appendLine(`Failed to synchronize document '${event.documentPath}': ${event.errorMessage}`);
+    }
+
+    private handleDevCertCreationFailure(event: Event.DevCertCreationFailure) {
+        this.logger.appendLine(`Couldn't create self-signed certificate. ${event.errorMessage}`);
     }
 }
